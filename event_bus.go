@@ -3,13 +3,14 @@ package EventBus
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 )
 
 //BusSubscriber defines subscription-related bus behavior
 type BusSubscriber interface {
-	Subscribe(topic string, fn interface{}) error
-	SubscribeAsync(topic string, fn interface{}, transactional bool) error
+	Subscribe(topic string, priority int, fn interface{}) error
+	SubscribeAsync(topic string, priority int, fn interface{}, transactional bool) error
 	SubscribeOnce(topic string, fn interface{}) error
 	SubscribeOnceAsync(topic string, fn interface{}) error
 	Unsubscribe(topic string, handler interface{}) error
@@ -45,6 +46,7 @@ type eventHandler struct {
 	flagOnce      bool
 	async         bool
 	transactional bool
+	priority      int
 	sync.Mutex // lock for an event handler - useful for running async callbacks serially
 }
 
@@ -66,14 +68,16 @@ func (bus *EventBus) doSubscribe(topic string, fn interface{}, handler *eventHan
 		return fmt.Errorf("%s is not of type reflect.Func", reflect.TypeOf(fn).Kind())
 	}
 	bus.handlers[topic] = append(bus.handlers[topic], handler)
+	sort.Sort(eventHandlerSorter(bus.handlers[topic]))
+
 	return nil
 }
 
 // Subscribe subscribes to a topic.
 // Returns error if `fn` is not a function.
-func (bus *EventBus) Subscribe(topic string, fn interface{}) error {
+func (bus *EventBus) Subscribe(topic string, priority int, fn interface{}) error {
 	return bus.doSubscribe(topic, fn, &eventHandler{
-		reflect.ValueOf(fn), false, false, false, sync.Mutex{},
+		reflect.ValueOf(fn), false, false, false, priority, sync.Mutex{},
 	})
 }
 
@@ -81,9 +85,9 @@ func (bus *EventBus) Subscribe(topic string, fn interface{}) error {
 // Transactional determines whether subsequent callbacks for a topic are
 // run serially (true) or concurrently (false)
 // Returns error if `fn` is not a function.
-func (bus *EventBus) SubscribeAsync(topic string, fn interface{}, transactional bool) error {
+func (bus *EventBus) SubscribeAsync(topic string, priority int, fn interface{}, transactional bool) error {
 	return bus.doSubscribe(topic, fn, &eventHandler{
-		reflect.ValueOf(fn), false, true, transactional, sync.Mutex{},
+		reflect.ValueOf(fn), false, true, transactional, priority, sync.Mutex{},
 	})
 }
 
@@ -91,7 +95,7 @@ func (bus *EventBus) SubscribeAsync(topic string, fn interface{}, transactional 
 // Returns error if `fn` is not a function.
 func (bus *EventBus) SubscribeOnce(topic string, fn interface{}) error {
 	return bus.doSubscribe(topic, fn, &eventHandler{
-		reflect.ValueOf(fn), true, false, false, sync.Mutex{},
+		reflect.ValueOf(fn), true, false, false, 0, sync.Mutex{},
 	})
 }
 
@@ -100,7 +104,7 @@ func (bus *EventBus) SubscribeOnce(topic string, fn interface{}) error {
 // Returns error if `fn` is not a function.
 func (bus *EventBus) SubscribeOnceAsync(topic string, fn interface{}) error {
 	return bus.doSubscribe(topic, fn, &eventHandler{
-		reflect.ValueOf(fn), true, true, false, sync.Mutex{},
+		reflect.ValueOf(fn), true, true, false, 0, sync.Mutex{},
 	})
 }
 

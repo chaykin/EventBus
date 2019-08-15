@@ -62,7 +62,7 @@ func (client *Client) doSubscribe(topic string, fn interface{}, serverAddr, serv
 		fmt.Errorf("Register error: %v", err)
 	}
 	if *reply {
-		client.eventBus.Subscribe(topic, fn)
+		client.eventBus.Subscribe(topic, 0, fn)
 	}
 }
 
